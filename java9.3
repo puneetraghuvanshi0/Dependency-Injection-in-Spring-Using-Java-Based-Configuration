@@ -1,0 +1,201 @@
+// File: SpringHibernateBankApp.java
+package com.example;
+
+import jakarta.persistence.*;
+import org.hibernate.*;
+import org.hibernate.cfg.Configuration;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.*;
+import org.springframework.orm.hibernate5.HibernateTransactionManager;
+import org.springframework.stereotype.Repository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import java.util.List;
+
+// ===============================
+// ENTITY CLASS: Account
+// ===============================
+@Entity
+@Table(name = "accounts")
+class Account {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int id;
+
+    @Column(nullable = false)
+    private String name;
+
+    @Column(nullable = false)
+    private double balance;
+
+    public Account() {}
+
+    public Account(String name, double balance) {
+        this.name = name;
+        this.balance = balance;
+    }
+
+    // Getters and Setters
+    public int getId() { return id; }
+    public String getName() { return name; }
+    public double getBalance() { return balance; }
+
+    public void setBalance(double balance) { this.balance = balance; }
+
+    @Override
+    public String toString() {
+        return "Account [id=" + id + ", name=" + name + ", balance=" + balance + "]";
+    }
+}
+
+// ===============================
+// DAO LAYER: AccountDAO
+// ===============================
+@Repository
+class AccountDAO {
+    @Autowired
+    private SessionFactory sessionFactory;
+
+    private Session getSession() {
+        return sessionFactory.getCurrentSession();
+    }
+
+    public void save(Account account) {
+        getSession().persist(account);
+    }
+
+    public Account findById(int id) {
+        return getSession().get(Account.class, id);
+    }
+
+    public List<Account> findAll() {
+        return getSession().createQuery("from Account", Account.class).list();
+    }
+
+    public void update(Account account) {
+        getSession().merge(account);
+    }
+}
+
+// ===============================
+// SERVICE LAYER: BankingService
+// ===============================
+@Service
+class BankingService {
+    @Autowired
+    private AccountDAO accountDAO;
+
+    // Transactional ensures rollback on any exception
+    @Transactional
+    public void transferMoney(int fromId, int toId, double amount) {
+        System.out.println("\n💸 Initiating transfer of ₹" + amount + "...");
+
+        Account fromAcc = accountDAO.findById(fromId);
+        Account toAcc = accountDAO.findById(toId);
+
+        if (fromAcc == null || toAcc == null)
+            throw new RuntimeException("❌ Account not found!");
+
+        if (fromAcc.getBalance() < amount)
+            throw new RuntimeException("❌ Insufficient funds in " + fromAcc.getName() + "'s account!");
+
+        fromAcc.setBalance(fromAcc.getBalance() - amount);
+        toAcc.setBalance(toAcc.getBalance() + amount);
+
+        accountDAO.update(fromAcc);
+        accountDAO.update(toAcc);
+
+        System.out.println("✅ Transfer successful! " + fromAcc.getName() + " → " + toAcc.getName());
+    }
+
+    public void displayAccounts() {
+        List<Account> accounts = accountDAO.findAll();
+        System.out.println("\n🏦 Account Balances:");
+        for (Account acc : accounts) {
+            System.out.println(acc);
+        }
+    }
+}
+
+// ===============================
+// CONFIGURATION: Spring + Hibernate
+// ===============================
+@Configuration
+@ComponentScan("com.example")
+@EnableTransactionManagement
+class AppConfig {
+
+    @Bean
+    public SessionFactory sessionFactory() {
+        Configuration config = new Configuration();
+
+        // --- Database Configuration (change credentials accordingly) ---
+        config.setProperty("hibernate.connection.driver_class", "com.mysql.cj.jdbc.Driver");
+        config.setProperty("hibernate.connection.url", "jdbc:mysql://localhost:3306/bankdb");
+        config.setProperty("hibernate.connection.username", "root");
+        config.setProperty("hibernate.connection.password", "yourpassword");
+
+        // --- Hibernate Properties ---
+        config.setProperty("hibernate.dialect", "org.hibernate.dialect.MySQL8Dialect");
+        config.setProperty("hibernate.hbm2ddl.auto", "update");
+        config.setProperty("hibernate.show_sql", "true");
+
+        // --- Entity Class Registration ---
+        config.addAnnotatedClass(Account.class);
+
+        return config.buildSessionFactory();
+    }
+
+    @Bean
+    public HibernateTransactionManager transactionManager(SessionFactory sessionFactory) {
+        return new HibernateTransactionManager(sessionFactory);
+    }
+}
+
+// ===============================
+// MAIN APPLICATION CLASS
+// ===============================
+public class SpringHibernateBankApp {
+    public static void main(String[] args) {
+        AnnotationConfigApplicationContext context =
+                new AnnotationConfigApplicationContext(AppConfig.class);
+
+        BankingService service = context.getBean(BankingService.class);
+        SessionFactory sf = context.getBean(SessionFactory.class);
+
+        // --- Initialize sample data ---
+        Session session = sf.openSession();
+        Transaction tx = session.beginTransaction();
+        session.persist(new Account("Alice", 5000));
+        session.persist(new Account("Bob", 3000));
+        tx.commit();
+        session.close();
+
+        // --- Display before transfer ---
+        service.displayAccounts();
+
+        // --- Successful transfer ---
+        try {
+            service.transferMoney(1, 2, 1500);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+
+        // --- Display after successful transfer ---
+        service.displayAccounts();
+
+        // --- Simulate failed transfer (rollback) ---
+        try {
+            service.transferMoney(1, 2, 10000); // exceeds balance
+        } catch (Exception e) {
+            System.out.println("⚠️ Transaction rolled back: " + e.getMessage());
+        }
+
+        // --- Final balances ---
+        service.displayAccounts();
+
+        context.close();
+    }
+}

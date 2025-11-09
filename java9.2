@@ -1,0 +1,165 @@
+// File: HibernateStudentCRUD.java
+package com.example;
+
+import jakarta.persistence.*;
+import org.hibernate.*;
+import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+import org.hibernate.cfg.Configuration;
+
+import java.util.List;
+
+// ----- ENTITY CLASS -----
+@Entity
+@Table(name = "students")
+class Student {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int id;
+
+    @Column(name = "name")
+    private String name;
+
+    @Column(name = "course")
+    private String course;
+
+    @Column(name = "email")
+    private String email;
+
+    public Student() {}
+
+    public Student(String name, String course, String email) {
+        this.name = name;
+        this.course = course;
+        this.email = email;
+    }
+
+    // Getters and Setters
+    public int getId() { return id; }
+    public String getName() { return name; }
+    public String getCourse() { return course; }
+    public String getEmail() { return email; }
+
+    public void setName(String name) { this.name = name; }
+    public void setCourse(String course) { this.course = course; }
+    public void setEmail(String email) { this.email = email; }
+
+    @Override
+    public String toString() {
+        return "Student [id=" + id + ", name=" + name +
+               ", course=" + course + ", email=" + email + "]";
+    }
+}
+
+// ----- MAIN APPLICATION CLASS -----
+public class HibernateStudentCRUD {
+
+    private static SessionFactory sessionFactory;
+
+    // Configure Hibernate programmatically (no XML)
+    static {
+        try {
+            Configuration config = new Configuration();
+
+            // Database configuration
+            config.setProperty("hibernate.connection.driver_class", "com.mysql.cj.jdbc.Driver");
+            config.setProperty("hibernate.connection.url", "jdbc:mysql://localhost:3306/studentdb");
+            config.setProperty("hibernate.connection.username", "root");
+            config.setProperty("hibernate.connection.password", "yourpassword");
+
+            // Hibernate properties
+            config.setProperty("hibernate.dialect", "org.hibernate.dialect.MySQL8Dialect");
+            config.setProperty("hibernate.hbm2ddl.auto", "update");
+            config.setProperty("hibernate.show_sql", "true");
+
+            // Add annotated entity class
+            config.addAnnotatedClass(Student.class);
+
+            StandardServiceRegistryBuilder builder =
+                    new StandardServiceRegistryBuilder().applySettings(config.getProperties());
+
+            sessionFactory = config.buildSessionFactory(builder.build());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Main method
+    public static void main(String[] args) {
+        // CREATE
+        createStudent("Ankit Gupta", "Spring Boot", "ankit@example.com");
+
+        // READ
+        readStudents();
+
+        // UPDATE
+        updateStudent(1, "Ankit G.", "Spring + Hibernate");
+
+        // DELETE
+        deleteStudent(1);
+
+        // Close SessionFactory
+        sessionFactory.close();
+    }
+
+    // ----- CREATE -----
+    public static void createStudent(String name, String course, String email) {
+        Session session = sessionFactory.openSession();
+        Transaction tx = session.beginTransaction();
+
+        Student student = new Student(name, course, email);
+        session.persist(student);
+
+        tx.commit();
+        session.close();
+        System.out.println("✅ Student added: " + student);
+    }
+
+    // ----- READ -----
+    public static void readStudents() {
+        Session session = sessionFactory.openSession();
+        List<Student> students = session.createQuery("from Student", Student.class).list();
+
+        System.out.println("\n📋 List of Students:");
+        for (Student s : students) {
+            System.out.println(s);
+        }
+
+        session.close();
+    }
+
+    // ----- UPDATE -----
+    public static void updateStudent(int id, String newName, String newCourse) {
+        Session session = sessionFactory.openSession();
+        Transaction tx = session.beginTransaction();
+
+        Student student = session.get(Student.class, id);
+        if (student != null) {
+            student.setName(newName);
+            student.setCourse(newCourse);
+            session.merge(student);
+            System.out.println("✏️ Updated Student: " + student);
+        } else {
+            System.out.println("❌ Student not found with ID: " + id);
+        }
+
+        tx.commit();
+        session.close();
+    }
+
+    // ----- DELETE -----
+    public static void deleteStudent(int id) {
+        Session session = sessionFactory.openSession();
+        Transaction tx = session.beginTransaction();
+
+        Student student = session.get(Student.class, id);
+        if (student != null) {
+            session.remove(student);
+            System.out.println("🗑️ Deleted Student with ID: " + id);
+        } else {
+            System.out.println("❌ Student not found with ID: " + id);
+        }
+
+        tx.commit();
+        session.close();
+    }
+}
